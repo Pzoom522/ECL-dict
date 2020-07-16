@@ -1,2 +1,6 @@
 # ECL-map
-Coming soon!
+Dictionary builder for Endangered Chinese Languages :book:
+
+-------
+
+Readme is coming soon!
