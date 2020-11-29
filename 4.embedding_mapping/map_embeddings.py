@@ -1,20 +1,4 @@
-# Copyright (C) 2016-2018  Mikel Artetxe <artetxem@gmail.com>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 import embeddings
-from cupy_utils import *
 
 import argparse
 import collections
@@ -29,20 +13,20 @@ def dropout(m, p):
         return m
     else:
         xp = get_array_module(m)
-        mask = xp.random.rand(*m.shape) >= p
+        mask = np.random.rand(*m.shape) >= p
         return m*mask
 
 
 def topk_mean(m, k, inplace=False):  # TODO Assuming that axis is 1
     xp = get_array_module(m)
     n = m.shape[0]
-    ans = xp.zeros(n, dtype=m.dtype)
+    ans = np.zeros(n, dtype=m.dtype)
     if k <= 0:
         return ans
     if not inplace:
-        m = xp.array(m)
-    ind0 = xp.arange(n)
-    ind1 = xp.empty(n, dtype=int)
+        m = np.array(m)
+    ind0 = np.arange(n)
+    ind1 = np.empty(n, dtype=int)
     minimum = m.min()
     for i in range(k):
         m.argmax(axis=1, out=ind1)
@@ -60,7 +44,6 @@ def main():
     parser.add_argument('trg_output', help='the output target embeddings')
     parser.add_argument('--encoding', default='utf-8', help='the character encoding for input/output (defaults to utf-8)')
     parser.add_argument('--precision', choices=['fp16', 'fp32', 'fp64'], default='fp32', help='the floating-point precision (defaults to fp32)')
-    parser.add_argument('--cuda', action='store_true', help='use cuda (requires cupy)')
     parser.add_argument('--batch_size', default=10000, type=int, help='batch size (defaults to 10000); does not affect results, larger is usually faster but uses more memory')
     parser.add_argument('--seed', type=int, default=0, help='the random seed (defaults to 0)')
 
@@ -70,11 +53,6 @@ def main():
     recommended_type.add_argument('--semi_supervised', metavar='DICTIONARY', help='recommended if you have a small seed dictionary')
     recommended_type.add_argument('--identical', action='store_true', help='recommended if you have no seed dictionary but can rely on identical words')
     recommended_type.add_argument('--unsupervised', action='store_true', help='recommended if you have no seed dictionary and do not want to rely on identical words')
-    recommended_type.add_argument('--acl2018', action='store_true', help='reproduce our ACL 2018 system')
-    recommended_type.add_argument('--aaai2018', metavar='DICTIONARY', help='reproduce our AAAI 2018 system')
-    recommended_type.add_argument('--acl2017', action='store_true', help='reproduce our ACL 2017 system with numeral initialization')
-    recommended_type.add_argument('--acl2017_seed', metavar='DICTIONARY', help='reproduce our ACL 2017 system with a seed dictionary')
-    recommended_type.add_argument('--emnlp2016', metavar='DICTIONARY', help='reproduce our EMNLP 2016 system')
 
     init_group = parser.add_argument_group('advanced initialization arguments', 'Advanced initialization arguments')
     init_type = init_group.add_mutually_exclusive_group()
@@ -116,16 +94,8 @@ def main():
         parser.set_defaults(init_dictionary=args.semi_supervised, normalize=['unit', 'center', 'unit'], whiten=True, src_reweight=0.5, trg_reweight=0.5, src_dewhiten='src', trg_dewhiten='trg', self_learning=True, vocabulary_cutoff=20000, csls_neighborhood=10)
     if args.identical:
         parser.set_defaults(init_identical=True, normalize=['unit', 'center', 'unit'], whiten=True, src_reweight=0.5, trg_reweight=0.5, src_dewhiten='src', trg_dewhiten='trg', self_learning=True, vocabulary_cutoff=20000, csls_neighborhood=10)
-    if args.unsupervised or args.acl2018:
+    if args.unsupervised:
         parser.set_defaults(init_unsupervised=True, unsupervised_vocab=4000, normalize=['unit', 'center', 'unit'], whiten=True, src_reweight=0.5, trg_reweight=0.5, src_dewhiten='src', trg_dewhiten='trg', self_learning=True, vocabulary_cutoff=20000, csls_neighborhood=10)
-    if args.aaai2018:
-        parser.set_defaults(init_dictionary=args.aaai2018, normalize=['unit', 'center'], whiten=True, trg_reweight=1, src_dewhiten='src', trg_dewhiten='trg', batch_size=1000)
-    if args.acl2017:
-        parser.set_defaults(init_numerals=True, orthogonal=True, normalize=['unit', 'center'], self_learning=True, direction='forward', stochastic_initial=1.0, stochastic_interval=1, batch_size=1000)
-    if args.acl2017_seed:
-        parser.set_defaults(init_dictionary=args.acl2017_seed, orthogonal=True, normalize=['unit', 'center'], self_learning=True, direction='forward', stochastic_initial=1.0, stochastic_interval=1, batch_size=1000)
-    if args.emnlp2016:
-        parser.set_defaults(init_dictionary=args.emnlp2016, orthogonal=True, normalize=['unit', 'center'], batch_size=1000)
     args = parser.parse_args()
 
     # Check command line arguments
@@ -147,17 +117,7 @@ def main():
     src_words, x = embeddings.read(srcfile, dtype=dtype)
     trg_words, z = embeddings.read(trgfile, dtype=dtype)
 
-    # NumPy/CuPy management
-    if args.cuda:
-        if not supports_cupy():
-            print('ERROR: Install CuPy for CUDA support', file=sys.stderr)
-            sys.exit(-1)
-        xp = get_cupy()
-        x = xp.asarray(x)
-        z = xp.asarray(z)
-    else:
-        xp = np
-    xp.random.seed(args.seed)
+    np.random.seed(args.seed)
 
     # Build word to index map
     src_word2ind = {word: i for i, word in enumerate(src_words)}
@@ -172,9 +132,9 @@ def main():
     trg_indices = []
     if args.init_unsupervised:
         sim_size = min(x.shape[0], z.shape[0]) if args.unsupervised_vocab <= 0 else min(x.shape[0], z.shape[0], args.unsupervised_vocab)
-        u, s, vt = xp.linalg.svd(x[:sim_size], full_matrices=False)
+        u, s, vt = np.linalg.svd(x[:sim_size], full_matrices=False)
         xsim = (u*s).dot(u.T)
-        u, s, vt = xp.linalg.svd(z[:sim_size], full_matrices=False)
+        u, s, vt = np.linalg.svd(z[:sim_size], full_matrices=False)
         zsim = (u*s).dot(u.T)
         del u, s, vt
         xsim.sort(axis=1)
@@ -185,16 +145,16 @@ def main():
         if args.csls_neighborhood > 0:
             knn_sim_fwd = topk_mean(sim, k=args.csls_neighborhood)
             knn_sim_bwd = topk_mean(sim.T, k=args.csls_neighborhood)
-            sim -= knn_sim_fwd[:, xp.newaxis]/2 + knn_sim_bwd/2
+            sim -= knn_sim_fwd[:, np.newaxis]/2 + knn_sim_bwd/2
         if args.direction == 'forward':
-            src_indices = xp.arange(sim_size)
+            src_indices = np.arange(sim_size)
             trg_indices = sim.argmax(axis=1)
         elif args.direction == 'backward':
             src_indices = sim.argmax(axis=0)
-            trg_indices = xp.arange(sim_size)
+            trg_indices = np.arange(sim_size)
         elif args.direction == 'union':
-            src_indices = xp.concatenate((xp.arange(sim_size), sim.argmax(axis=0)))
-            trg_indices = xp.concatenate((sim.argmax(axis=1), xp.arange(sim_size)))
+            src_indices = np.concatenate((np.arange(sim_size), sim.argmax(axis=0)))
+            trg_indices = np.concatenate((sim.argmax(axis=1), np.arange(sim_size)))
         del xsim, zsim, sim
     elif args.init_numerals:
         numeral_regex = re.compile('^[0-9]+$')
@@ -244,23 +204,23 @@ def main():
         log = open(args.log, mode='w', encoding=args.encoding, errors='surrogateescape')
 
     # Allocate memory
-    xw = xp.empty_like(x)
-    zw = xp.empty_like(z)
+    xw = np.empty_like(x)
+    zw = np.empty_like(z)
     src_size = x.shape[0] if args.vocabulary_cutoff <= 0 else min(x.shape[0], args.vocabulary_cutoff)
     trg_size = z.shape[0] if args.vocabulary_cutoff <= 0 else min(z.shape[0], args.vocabulary_cutoff)
-    simfwd = xp.empty((args.batch_size, trg_size), dtype=dtype)
-    simbwd = xp.empty((args.batch_size, src_size), dtype=dtype)
+    simfwd = np.empty((args.batch_size, trg_size), dtype=dtype)
+    simbwd = np.empty((args.batch_size, src_size), dtype=dtype)
     if args.validation is not None:
-        simval = xp.empty((len(validation.keys()), z.shape[0]), dtype=dtype)
+        simval = np.empty((len(validation.keys()), z.shape[0]), dtype=dtype)
 
-    best_sim_forward = xp.full(src_size, -100, dtype=dtype)
-    src_indices_forward = xp.arange(src_size)
-    trg_indices_forward = xp.zeros(src_size, dtype=int)
-    best_sim_backward = xp.full(trg_size, -100, dtype=dtype)
-    src_indices_backward = xp.zeros(trg_size, dtype=int)
-    trg_indices_backward = xp.arange(trg_size)
-    knn_sim_fwd = xp.zeros(src_size, dtype=dtype)
-    knn_sim_bwd = xp.zeros(trg_size, dtype=dtype)
+    best_sim_forward = np.full(src_size, -100, dtype=dtype)
+    src_indices_forward = np.arange(src_size)
+    trg_indices_forward = np.zeros(src_size, dtype=int)
+    best_sim_backward = np.full(trg_size, -100, dtype=dtype)
+    src_indices_backward = np.zeros(trg_size, dtype=int)
+    trg_indices_backward = np.arange(trg_size)
+    knn_sim_fwd = np.zeros(src_size, dtype=dtype)
+    knn_sim_bwd = np.zeros(trg_size, dtype=dtype)
 
     # Training loop
     best_objective = objective = -100.
@@ -280,12 +240,12 @@ def main():
 
         # Update the embedding mapping
         if args.orthogonal or not end:  # orthogonal mapping
-            u, s, vt = xp.linalg.svd(z[trg_indices].T.dot(x[src_indices]))
+            u, s, vt = np.linalg.svd(z[trg_indices].T.dot(x[src_indices]))
             w = vt.T.dot(u.T)
             x.dot(w, out=xw)
             zw[:] = z
         elif args.unconstrained:  # unconstrained mapping
-            x_pseudoinv = xp.linalg.inv(x[src_indices].T.dot(x[src_indices])).dot(x[src_indices].T)
+            x_pseudoinv = np.linalg.inv(x[src_indices].T.dot(x[src_indices])).dot(x[src_indices].T)
             w = x_pseudoinv.dot(z[trg_indices])
             x.dot(w, out=xw)
             zw[:] = z
@@ -297,8 +257,8 @@ def main():
 
             # STEP 1: Whitening
             def whitening_transformation(m):
-                u, s, vt = xp.linalg.svd(m, full_matrices=False)
-                return vt.T.dot(xp.diag(1/s)).dot(vt)
+                u, s, vt = np.linalg.svd(m, full_matrices=False)
+                return vt.T.dot(np.diag(1/s)).dot(vt)
             if args.whiten:
                 wx1 = whitening_transformation(xw[src_indices])
                 wz1 = whitening_transformation(zw[trg_indices])
@@ -306,7 +266,7 @@ def main():
                 zw = zw.dot(wz1)
 
             # STEP 2: Orthogonal mapping
-            wx2, s, wz2_t = xp.linalg.svd(xw[src_indices].T.dot(zw[trg_indices]))
+            wx2, s, wz2_t = np.linalg.svd(xw[src_indices].T.dot(zw[trg_indices]))
             wz2 = wz2_t.T
             xw = xw.dot(wx2)
             zw = zw.dot(wz2)
@@ -317,13 +277,13 @@ def main():
 
             # STEP 4: De-whitening
             if args.src_dewhiten == 'src':
-                xw = xw.dot(wx2.T.dot(xp.linalg.inv(wx1)).dot(wx2))
+                xw = xw.dot(wx2.T.dot(np.linalg.inv(wx1)).dot(wx2))
             elif args.src_dewhiten == 'trg':
-                xw = xw.dot(wz2.T.dot(xp.linalg.inv(wz1)).dot(wz2))
+                xw = xw.dot(wz2.T.dot(np.linalg.inv(wz1)).dot(wz2))
             if args.trg_dewhiten == 'src':
-                zw = zw.dot(wx2.T.dot(xp.linalg.inv(wx1)).dot(wx2))
+                zw = zw.dot(wx2.T.dot(np.linalg.inv(wx1)).dot(wx2))
             elif args.trg_dewhiten == 'trg':
-                zw = zw.dot(wz2.T.dot(xp.linalg.inv(wz1)).dot(wz2))
+                zw = zw.dot(wz2.T.dot(np.linalg.inv(wz1)).dot(wz2))
 
             # STEP 5: Dimensionality reduction
             if args.dim_reduction > 0:
@@ -366,16 +326,16 @@ def main():
                 src_indices = src_indices_backward
                 trg_indices = trg_indices_backward
             elif args.direction == 'union':
-                src_indices = xp.concatenate((src_indices_forward, src_indices_backward))
-                trg_indices = xp.concatenate((trg_indices_forward, trg_indices_backward))
+                src_indices = np.concatenate((src_indices_forward, src_indices_backward))
+                trg_indices = np.concatenate((trg_indices_forward, trg_indices_backward))
 
             # Objective function evaluation
             if args.direction == 'forward':
-                objective = xp.mean(best_sim_forward).tolist()
+                objective = np.mean(best_sim_forward).tolist()
             elif args.direction == 'backward':
-                objective = xp.mean(best_sim_backward).tolist()
+                objective = np.mean(best_sim_backward).tolist()
             elif args.direction == 'union':
-                objective = (xp.mean(best_sim_forward) + xp.mean(best_sim_backward)).tolist() / 2
+                objective = (np.mean(best_sim_forward) + np.mean(best_sim_backward)).tolist() / 2
             if objective - best_objective >= args.threshold:
                 last_improvement = it
                 best_objective = objective
