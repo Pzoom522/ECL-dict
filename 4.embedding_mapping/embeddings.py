@@ -26,29 +26,25 @@ def write(words, matrix, file):
 
 
 def length_normalize(matrix):
-    xp = get_array_module(matrix)
-    norms = xp.sqrt(xp.sum(matrix**2, axis=1))
+    norms = np.sqrt(np.sum(matrix**2, axis=1))
     norms[norms == 0] = 1
-    matrix /= norms[:, xp.newaxis]
+    matrix /= norms[:, np.newaxis]
 
 
 def mean_center(matrix):
-    xp = get_array_module(matrix)
-    avg = xp.mean(matrix, axis=0)
+    avg = np.mean(matrix, axis=0)
     matrix -= avg
 
 
 def length_normalize_dimensionwise(matrix):
-    xp = get_array_module(matrix)
-    norms = xp.sqrt(xp.sum(matrix**2, axis=0))
+    norms = np.sqrt(np.sum(matrix**2, axis=0))
     norms[norms == 0] = 1
     matrix /= norms
 
 
 def mean_center_embeddingwise(matrix):
-    xp = get_array_module(matrix)
-    avg = xp.mean(matrix, axis=1)
-    matrix -= avg[:, xp.newaxis]
+    avg = np.mean(matrix, axis=1)
+    matrix -= avg[:, np.newaxis]
 
 
 def normalize(matrix, actions):

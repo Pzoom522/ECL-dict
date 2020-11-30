@@ -12,13 +12,11 @@ def dropout(m, p):
     if p <= 0.0:
         return m
     else:
-        xp = get_array_module(m)
         mask = np.random.rand(*m.shape) >= p
         return m*mask
 
 
 def topk_mean(m, k, inplace=False):  # TODO Assuming that axis is 1
-    xp = get_array_module(m)
     n = m.shape[0]
     ans = np.zeros(n, dtype=m.dtype)
     if k <= 0:
